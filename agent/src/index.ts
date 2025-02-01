@@ -54,6 +54,9 @@ import { fileURLToPath } from "url";
 import yargs from "yargs";
 import { MongoClient } from "mongodb";
 
+import { hiramCharacter } from "./characters/hiram.character";
+import { postTweetAction } from "./actions/postTweet";
+
 const __filename = fileURLToPath(import.meta.url); // get the resolved path to the file
 const __dirname = path.dirname(__filename); // get the name of the directory
 
@@ -289,7 +292,7 @@ export async function loadCharacters(
 
     if (loadedCharacters.length === 0) {
         elizaLogger.info("No characters found, using default character");
-        loadedCharacters.push(defaultCharacter);
+        loadedCharacters.push(hiramCharacter);
     }
 
     return loadedCharacters;
@@ -747,12 +750,13 @@ export async function createAgent(
         // character.plugins are handled when clients are added
         plugins: [
             bootstrapPlugin,
-            nodePlugin
+            nodePlugin,
         ]
             .flat()
             .filter(Boolean),
         providers: [],
         managers: [],
+        actions: [postTweetAction],
         cacheManager: cache,
         fetch: logFetch,
     });
@@ -918,7 +922,7 @@ const startAgents = async () => {
     let serverPort = Number.parseInt(settings.SERVER_PORT || "3000");
     const args = parseArguments();
     const charactersArg = args.characters || args.character;
-    let characters = [defaultCharacter];
+    let characters = [hiramCharacter];
 
 
 
