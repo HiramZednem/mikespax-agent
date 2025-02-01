@@ -4,16 +4,11 @@ import { Action, elizaLogger, IAgentRuntime, Memory, State, composeContext, gene
 
 const tweetTemplate = `
 # Context
-{{recentMessages}}
-
-# Topics
-{{topics}}
 
 # Post Directions
 {{postDirections}}
 
-# Recent interactions between {{agentName}} and other users:
-{{recentPostInteractions}}
+**REQUESTED TOPIC MESSAGE TO TWEET ABOUT: {{requestedTopic}}**
 
 # Task
 Generate a tweet that:
@@ -32,19 +27,23 @@ async function composeTweet(
     _message: Memory,
     state?: State
 ) {
+    
+    const requestedTopic = _message.content.text;
+    state.requestedTopic = requestedTopic;
 
     const context = composeContext({
         state,
         template: tweetTemplate,
     });
 
-    elizaLogger.info("context created")
+    elizaLogger.info(`context: ${context}`)
+
+
     const response = await generateText({
         runtime: runtime,
         context,
         modelClass: ModelClass.SMALL,
     });
-    elizaLogger.info("response generated")
 
     const rawTweetContent = cleanJsonResponse(response);
 
