@@ -1,4 +1,4 @@
-import { Action, elizaLogger, IAgentRuntime, Memory, State, composeContext, generateText, cleanJsonResponse, parseJSONObjectFromText, extractAttributes, truncateToCompleteSentence, ModelClass } from "@elizaos/core";
+import { Action, elizaLogger, IAgentRuntime, Memory, State, composeContext, generateText, cleanJsonResponse, parseJSONObjectFromText, extractAttributes, truncateToCompleteSentence, ModelClass, HandlerCallback, Content } from "@elizaos/core";
 
 
 
@@ -28,38 +28,46 @@ export const trendAnalysisAction: Action = {
     name: "TREND_ANALYSIS",
     similes: ["TICKER_ANALYSIS", "TICKER_REVIEW"],
     description: "Make a analysis",
-    validate: async (
-        runtime: IAgentRuntime,
-        _message: Memory,
-        _state?: State
-    ) => {
-        const username = runtime.getSetting("TWITTER_USERNAME");
-        const password = runtime.getSetting("TWITTER_PASSWORD");
-        const email = runtime.getSetting("TWITTER_EMAIL");
-        const hasCredentials = !!username && !!password && !!email;
-        elizaLogger.log(`Has credentials: ${hasCredentials}`);
-
-        return hasCredentials;
+    suppressInitialMessage: true,
+    validate: async ( runtime: IAgentRuntime, _message: Memory ) => {
+        return true;
     },
     handler: async (
         runtime: IAgentRuntime,
         message: Memory,
-        state?: State
+        state?: State,
+        options?: { [key: string]: unknown },
+        callback?: HandlerCallback,
     ): Promise<boolean> => {
         try {
             // Generate tweet content using context
             elizaLogger.info("Generating an analysis...");
 
-
-
-
-
-
             // 1. GET THE TICKER FROM THE TEXT
+            const context: string = `
+            Extract the ticker symbol from the following message by {{username}}:
+            "${message.content.text}"
+            
+            Only respond with the ticker symbol (e.g., AAPL), and do not include any other text.`;
+
+            const response = await generateText({
+                runtime: runtime,
+                context,
+                modelClass: ModelClass.SMALL,
+            });
+        
+
+            const content = `The ticker which you want the analysis is: ${response}`
+
+
             // 2. MAKE AN API CALL
-            // 3. CREATE THE CONTEXT
-            // 4. IDENTIFY WHERE THE MESSAGE WAS SEND IT THO REPLY DIRECTLY THERE
-            // 5. REPLY
+            
+            
+            // 3. CREATE THE ANALYSIS
+            
+            
+            // 4. REPLY
+            callback({ text: content })
             
         } catch (error) {
             elizaLogger.error("Error in post action:", error);
