@@ -55,7 +55,7 @@ import yargs from "yargs";
 import { MongoClient } from "mongodb";
 
 import { hiramCharacter } from "./characters/hiram.character";
-import { postTweetAction } from "./actions/postTweet";
+import { postTweetAction, trendAnalysisAction } from "./actions";
 
 const __filename = fileURLToPath(import.meta.url); // get the resolved path to the file
 const __dirname = path.dirname(__filename); // get the name of the directory
@@ -756,7 +756,7 @@ export async function createAgent(
             .filter(Boolean),
         providers: [],
         managers: [],
-        actions: [postTweetAction],
+        actions: [postTweetAction, trendAnalysisAction],
         cacheManager: cache,
         fetch: logFetch,
     });
