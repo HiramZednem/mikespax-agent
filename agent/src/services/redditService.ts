@@ -46,6 +46,15 @@ class RedditService {
         }
     }
 
+    async getSubredditPosts(subreddit: string): Promise<snoowrap.Submission[]> {
+        try {
+            return await this.client.getSubreddit(subreddit).getHot();
+        } catch (error) {
+            console.error(`Error fetching hot posts from ${subreddit}:`, error);
+            throw error;
+        }
+    }
+
 }
 
 export default RedditService;
