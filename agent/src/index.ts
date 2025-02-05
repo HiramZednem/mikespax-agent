@@ -56,6 +56,7 @@ import { MongoClient } from "mongodb";
 
 import { hiramCharacter } from "./characters/hiram.character";
 import { postTweetAction, trendAnalysisAction } from "./actions";
+import { redditProvider } from "./providers";
 
 const __filename = fileURLToPath(import.meta.url); // get the resolved path to the file
 const __dirname = path.dirname(__filename); // get the name of the directory
@@ -754,7 +755,7 @@ export async function createAgent(
         ]
             .flat()
             .filter(Boolean),
-        providers: [],
+        providers: [redditProvider],
         managers: [],
         actions: [postTweetAction, trendAnalysisAction],
         cacheManager: cache,
