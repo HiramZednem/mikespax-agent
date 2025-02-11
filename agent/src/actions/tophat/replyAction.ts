@@ -32,19 +32,35 @@ async function sendStandardTweet(
         mediaData?: any[]
     ) {
         try {
-            const standardTweetResult = await client.requestQueue.add(
-                async () =>
-                    await client.twitterClient.sendTweet(
+            const result = await client.sendTweet(
                         content,
                         tweetId,
                         mediaData
                     )
-            );
-            const body = await standardTweetResult.json();
-            if (!body?.data?.create_tweet?.tweet_results?.result) {
-                elizaLogger.error("Error sending tweet; Bad response:", body);
-                return;
-            }
+            
+
+
+
+            const body = await result.json();
+
+
+            // Check for Twitter API errors
+    if (body.errors) {
+        const error = body.errors[0];
+        elizaLogger.error(
+            `Twitter API error (${error.code}): ${error.message}`
+        );
+        return false;
+    }
+
+    // Check for successful tweet creation
+    if (!body?.data?.create_tweet?.tweet_results?.result) {
+        elizaLogger.error("Failed to post tweet: No tweet result in response");
+        return false;
+    }
+
+
+    
             return body.data.create_tweet.tweet_results.result;
         } catch (error) {
             elizaLogger.error("Error sending standard Tweet:", error);
@@ -63,65 +79,76 @@ async function generateTweetContent(
 ): Promise<string> {
     const context = composeContext({
         state: tweetState,
-        template:
-            options?.template ||
-            runtime.character.templates?.twitterPostTemplate ||
-            twitterPostTemplate,
+        template: twitterPostTemplate,
     });
 
     const response = await generateText({
         runtime: runtime,
-        context: options?.context || context,
+        context: context,
         modelClass: ModelClass.SMALL,
     });
 
     elizaLogger.log("generate tweet content response:\n" + response);
 
     // First clean up any markdown and newlines
-    const cleanedResponse = cleanJsonResponse(response);
+    const rawTweetContent = cleanJsonResponse(response);
 
     // Try to parse as JSON first
-    const jsonResponse = parseJSONObjectFromText(cleanedResponse);
-    if (jsonResponse.text) {
-        const truncateContent = truncateToCompleteSentence(
-            jsonResponse.text,
-            client.twitterConfig.MAX_TWEET_LENGTH
-        );
-        return truncateContent;
+  
+    let tweetTextForPosting = null;
+    let mediaData = null;
+
+    // Try parsing as JSON first
+    const parsedResponse = parseJSONObjectFromText(rawTweetContent);
+    if (parsedResponse?.text) {
+        tweetTextForPosting = parsedResponse.text;
     }
-    if (typeof jsonResponse === "object") {
-        const possibleContent =
-            jsonResponse.content ||
-            jsonResponse.message ||
-            jsonResponse.response;
-        if (possibleContent) {
-            const truncateContent = truncateToCompleteSentence(
-                possibleContent,
-                client.twitterConfig.MAX_TWEET_LENGTH
+
+    // if (
+    //     parsedResponse?.attachments &&
+    //     parsedResponse?.attachments.length > 0
+    // ) {
+    //     mediaData = await fetchMediaData(parsedResponse.attachments);
+    // }
+
+    // Try extracting text attribute
+    if (!tweetTextForPosting) {
+        const parsingText = extractAttributes(rawTweetContent, [
+            "text",
+        ]).text;
+        if (parsingText) {
+            tweetTextForPosting = truncateToCompleteSentence(
+                extractAttributes(rawTweetContent, ["text"]).text,
+                this.client.twitterConfig.MAX_TWEET_LENGTH
             );
-            return truncateContent;
         }
     }
 
-    let truncateContent = null;
-    // Try extracting text attribute
-    const parsingText = extractAttributes(cleanedResponse, ["text"]).text;
-    if (parsingText) {
-        truncateContent = truncateToCompleteSentence(
-            parsingText,
-            client.twitterConfig.MAX_TWEET_LENGTH
+    // Use the raw text
+    if (!tweetTextForPosting) {
+        tweetTextForPosting = rawTweetContent;
+    }
+
+    const maxTweetLength = 280
+    // Truncate the content to the maximum tweet length specified in the environment settings, ensuring the truncation respects sentence boundaries.
+    if (maxTweetLength) {
+        tweetTextForPosting = truncateToCompleteSentence(
+            tweetTextForPosting,
+            maxTweetLength
         );
     }
 
-    if (!truncateContent) {
-        // If not JSON or no valid content found, clean the raw text
-        truncateContent = truncateToCompleteSentence(
-            cleanedResponse,
-            client.twitterConfig.MAX_TWEET_LENGTH
-        );
-    }
+    const removeQuotes = (str: string) =>
+        str.replace(/^['"](.*)['"]$/, "$1");
 
-    return truncateContent;
+    const fixNewLines = (str: string) => str.replaceAll(/\\n/g, "\n\n"); //ensures double spaces
+
+    // Final cleaning
+    tweetTextForPosting = removeQuotes(
+        fixNewLines(tweetTextForPosting)
+    );
+
+    return tweetTextForPosting;
 }
 
 async function handleTextOnlyReply(
@@ -215,19 +242,13 @@ async function handleTextOnlyReply(
 
         let result;
 
-        // if (replyText.length > DEFAULT_MAX_TWEET_LENGTH) {
-        //     result = await this.handleNoteTweet(
-        //         this.client,
-        //         replyText,
-        //         tweet.id
-        //     );
-        // } else {
-            result = await this.sendStandardTweet(
+    
+            result = await sendStandardTweet(
                 client,
                 replyText,
                 tweet.id
             );
-        // }
+
 
         if (result) {
             elizaLogger.log("Successfully posted reply tweet");
