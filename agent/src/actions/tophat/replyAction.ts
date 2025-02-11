@@ -1,5 +1,6 @@
 
-import { Action, elizaLogger, IAgentRuntime, Memory, State, composeContext, generateText, cleanJsonResponse, parseJSONObjectFromText, extractAttributes, truncateToCompleteSentence, ModelClass, HandlerCallback, IImageDescriptionService, ServiceType } from "@elizaos/core";
+import { Action, elizaLogger, IAgentRuntime, Memory, State, composeContext, generateText, cleanJsonResponse, parseJSONObjectFromText, extractAttributes, truncateToCompleteSentence, ModelClass, HandlerCallback, IImageDescriptionService, ServiceType, stringToUuid, TemplateType } from "@elizaos/core";
+import { buildConversationThread, twitterMessageHandlerTemplate, twitterPostTemplate } from "./utils";
 
 
 
@@ -22,6 +23,239 @@ Generate a tweet that:
 Generate only the tweet text, no other commentary.
 
 Return the tweet in JSON format like: {"text": "your tweet here"}`;
+
+
+async function sendStandardTweet(
+        client: any,
+        content: string,
+        tweetId?: string,
+        mediaData?: any[]
+    ) {
+        try {
+            const standardTweetResult = await client.requestQueue.add(
+                async () =>
+                    await client.twitterClient.sendTweet(
+                        content,
+                        tweetId,
+                        mediaData
+                    )
+            );
+            const body = await standardTweetResult.json();
+            if (!body?.data?.create_tweet?.tweet_results?.result) {
+                elizaLogger.error("Error sending tweet; Bad response:", body);
+                return;
+            }
+            return body.data.create_tweet.tweet_results.result;
+        } catch (error) {
+            elizaLogger.error("Error sending standard Tweet:", error);
+            throw error;
+        }
+    }
+
+async function generateTweetContent(
+    client: any,
+    runtime: IAgentRuntime,
+    tweetState: any,
+    options?: {
+        template?: TemplateType;
+        context?: string;
+    }
+): Promise<string> {
+    const context = composeContext({
+        state: tweetState,
+        template:
+            options?.template ||
+            runtime.character.templates?.twitterPostTemplate ||
+            twitterPostTemplate,
+    });
+
+    const response = await generateText({
+        runtime: runtime,
+        context: options?.context || context,
+        modelClass: ModelClass.SMALL,
+    });
+
+    elizaLogger.log("generate tweet content response:\n" + response);
+
+    // First clean up any markdown and newlines
+    const cleanedResponse = cleanJsonResponse(response);
+
+    // Try to parse as JSON first
+    const jsonResponse = parseJSONObjectFromText(cleanedResponse);
+    if (jsonResponse.text) {
+        const truncateContent = truncateToCompleteSentence(
+            jsonResponse.text,
+            client.twitterConfig.MAX_TWEET_LENGTH
+        );
+        return truncateContent;
+    }
+    if (typeof jsonResponse === "object") {
+        const possibleContent =
+            jsonResponse.content ||
+            jsonResponse.message ||
+            jsonResponse.response;
+        if (possibleContent) {
+            const truncateContent = truncateToCompleteSentence(
+                possibleContent,
+                client.twitterConfig.MAX_TWEET_LENGTH
+            );
+            return truncateContent;
+        }
+    }
+
+    let truncateContent = null;
+    // Try extracting text attribute
+    const parsingText = extractAttributes(cleanedResponse, ["text"]).text;
+    if (parsingText) {
+        truncateContent = truncateToCompleteSentence(
+            parsingText,
+            client.twitterConfig.MAX_TWEET_LENGTH
+        );
+    }
+
+    if (!truncateContent) {
+        // If not JSON or no valid content found, clean the raw text
+        truncateContent = truncateToCompleteSentence(
+            cleanedResponse,
+            client.twitterConfig.MAX_TWEET_LENGTH
+        );
+    }
+
+    return truncateContent;
+}
+
+async function handleTextOnlyReply(
+    tweet: any,
+    tweetState: any,
+    runtime: IAgentRuntime,
+    client: any
+) {
+    try {
+        // Build conversation thread for context
+        // const thread = await buildConversationThread(tweet, client);
+        // const formattedConversation = thread
+        //     .map(
+        //         (t) =>
+        //             `@${t.username} (${new Date(
+        //                 t.timestamp * 1000
+        //             ).toLocaleString()}): ${t.text}`
+        //     )
+        //     .join("\n\n");
+
+        const formattedConversation = "";
+        // Generate image descriptions if present
+        const imageDescriptions = [];
+        if (tweet.photos?.length > 0) {
+            elizaLogger.log("Processing images in tweet for context");
+            for (const photo of tweet.photos) {
+                const description = await runtime
+                    .getService<IImageDescriptionService>(
+                        ServiceType.IMAGE_DESCRIPTION
+                    )
+                    .describeImage(photo.url);
+                imageDescriptions.push(description);
+            }
+        }
+
+        // Handle quoted tweet if present
+        let quotedContent = "";
+        if (tweet.quotedStatusId) {
+            try {
+                const quotedTweet =
+                    await client.twitterClient.getTweet(
+                        tweet.quotedStatusId
+                    );
+                if (quotedTweet) {
+                    quotedContent = `\nQuoted Tweet from @${quotedTweet.username}:\n${quotedTweet.text}`;
+                }
+            } catch (error) {
+                elizaLogger.error("Error fetching quoted tweet:", error);
+            }
+        }
+
+        // Compose rich state with all context
+        const enrichedState = await runtime.composeState(
+            {
+                userId: runtime.agentId,
+                roomId: stringToUuid(
+                    tweet.conversationId + "-" + runtime.agentId
+                ),
+                agentId: runtime.agentId,
+                content: { text: tweet.text, action: "" },
+            },
+            {
+                currentPost: `From @${tweet.username}: ${tweet.text}`,
+                formattedConversation,
+                imageContext:
+                    imageDescriptions.length > 0
+                        ? `\nImages in Tweet:\n${imageDescriptions
+                              .map((desc, i) => `Image ${i + 1}: ${desc}`)
+                              .join("\n")}`
+                        : "",
+                quotedContent,
+            }
+        );
+
+        // NUNCA HABIA LLEGADO TAN LEJOS, PERO LLEGE HASTA ACA
+        // Generate and clean the reply content
+        const replyText = await generateTweetContent(client, runtime, enrichedState, {
+            template:
+                runtime.character.templates
+                    ?.twitterMessageHandlerTemplate ||
+                twitterMessageHandlerTemplate,
+        });
+
+        if (!replyText) {
+            elizaLogger.error("Failed to generate valid reply content");
+            return;
+        }
+
+
+        elizaLogger.debug("Final reply text to be sent:", replyText);
+
+        let result;
+
+        // if (replyText.length > DEFAULT_MAX_TWEET_LENGTH) {
+        //     result = await this.handleNoteTweet(
+        //         this.client,
+        //         replyText,
+        //         tweet.id
+        //     );
+        // } else {
+            result = await this.sendStandardTweet(
+                client,
+                replyText,
+                tweet.id
+            );
+        // }
+
+        if (result) {
+            elizaLogger.log("Successfully posted reply tweet");
+            // executedActions.push("reply");
+
+            // Cache generation context for debugging
+            await runtime.cacheManager.set(
+                `twitter/reply_generation_${tweet.id}.txt`,
+                `Context:\n${enrichedState}\n\nGenerated Reply:\n${replyText}`
+            );
+        } else {
+            elizaLogger.error("Tweet reply creation failed");
+        }
+    } catch (error) {
+        elizaLogger.error("Error in handleTextOnlyReply:", error);
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -64,11 +298,26 @@ export const replyAction: Action = {
             // Extract the tweet URL from the message
             const tweetUrl = message.content.text.split("/reply")[1];
             const tweetId = tweetUrl.split("/").pop();
-            const tweet = await twitterClient.getTweet(tweetId);
             
-
+            
             // Get the tweet content
+            const tweet = await twitterClient.getTweet(tweetId);
 
+
+            // const tweetContent = await composeTweet(runtime, message, state);
+
+            // if (!tweetContent) {
+            //     elizaLogger.error("No content generated for tweet");
+            //     return false;
+            // }
+
+ await handleTextOnlyReply(
+                tweet,
+                state,
+                runtime,
+                twitterClient
+            );
+           
 
 
             callback({text:`The url of the tweet is ${tweetUrl} and the main text is ${tweet.text}`});
