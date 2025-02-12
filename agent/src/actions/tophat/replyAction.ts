@@ -29,6 +29,15 @@ async function sendStandardTweet(
     mediaData?: any[]
 ) {
     try {
+        if (
+            process.env.TWITTER_DRY_RUN &&
+            process.env.TWITTER_DRY_RUN.toLowerCase() === "true"
+        ) {
+            elizaLogger.info(
+                `Dry run: would have posted tweet: ${content}`
+            );
+            return true;
+        }
         const result = await client.sendTweet(content, tweetId, mediaData);
 
         const body = await result.json();
@@ -136,7 +145,7 @@ async function handleTextOnlyReply(
 ) {
     try {
         // Build conversation thread for context
-        // const thread = await buildConversationThread(tweet, client);
+        // const thread = await buildConversationThread(tweet, client, runtime);
         // const formattedConversation = thread
         //     .map(
         //         (t) =>
@@ -284,11 +293,22 @@ export const replyAction: Action = {
 
             const response = `[🐦 reply]: ${replyUrl}
 ${content}`
+
+            if (
+                process.env.TWITTER_DRY_RUN &&
+                process.env.TWITTER_DRY_RUN.toLowerCase() === "true"
+            ) {
+                callback({
+                    text:`Dry run: would have posted tweet: ${content}`
+                });
+                return true;
+            }
+
             callback({
                 text: response,
             });
         } catch (error) {
-            elizaLogger.error("Error in post action:", error);
+            elizaLogger.error("Error in reply action:", error);
             return false;
         }
     },

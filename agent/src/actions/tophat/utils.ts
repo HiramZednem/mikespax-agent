@@ -1,4 +1,4 @@
-import { elizaLogger, getEmbeddingZeroVector, messageCompletionFooter, stringToUuid } from "@elizaos/core";
+import { elizaLogger, getEmbeddingZeroVector, IAgentRuntime, messageCompletionFooter, stringToUuid } from "@elizaos/core";
 
 export const twitterMessageHandlerTemplate =
 `
@@ -45,6 +45,7 @@ Here is the descriptions of images in the Current post.
 export async function buildConversationThread(
     tweet: any,
     client: any,
+    runtime: IAgentRuntime,
     maxReplies = 10
 ): Promise<any[]> {
     const thread: any[] = [];
@@ -69,7 +70,7 @@ export async function buildConversationThread(
         }
 
         // Handle memory storage
-        const memory = await client.runtime.messageManager.getMemoryById(
+        const memory = await runtime.messageManager.getMemoryById(
             stringToUuid(currentTweet.id + "-" + client.runtime.agentId)
         );
         if (!memory) {
@@ -86,11 +87,11 @@ export async function buildConversationThread(
                 "twitter"
             );
 
-            await client.runtime.messageManager.createMemory({
+            await runtime.messageManager.createMemory({
                 id: stringToUuid(
-                    currentTweet.id + "-" + client.runtime.agentId
+                    currentTweet.id + "-" + runtime.agentId
                 ),
-                agentId: client.runtime.agentId,
+                agentId: runtime.agentId,
                 content: {
                     text: currentTweet.text,
                     source: "twitter",
@@ -99,7 +100,7 @@ export async function buildConversationThread(
                         ? stringToUuid(
                               currentTweet.inReplyToStatusId +
                                   "-" +
-                                  client.runtime.agentId
+                                  runtime.agentId
                           )
                         : undefined,
                 },
