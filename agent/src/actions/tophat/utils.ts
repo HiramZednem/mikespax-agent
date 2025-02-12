@@ -107,7 +107,7 @@ export async function buildConversationThread(
                 createdAt: currentTweet.timestamp * 1000,
                 roomId,
                 userId:
-                    currentTweet.userId === client.profile.id
+                    currentTweet.userId === client.auth.userProfile.userId
                         ? client.runtime.agentId
                         : stringToUuid(currentTweet.userId),
                 embedding: getEmbeddingZeroVector(),

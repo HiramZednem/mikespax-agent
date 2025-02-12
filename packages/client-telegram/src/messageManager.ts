@@ -35,6 +35,7 @@ import {
 } from "./constants";
 
 import fs from "fs";
+import { MemoryManager } from "@elizaos/core";
 
 enum MediaType {
     PHOTO = "photo",
@@ -678,6 +679,14 @@ export class MessageManager {
         message: Message,
         state: State
     ): Promise<boolean> {
+        if (
+            "text" in message &&
+            message.text?.includes(`/reply`)
+        ) {
+            elizaLogger.info(`reply command detected avoiding first message`);
+            return false;
+        }
+
         if (
             this.runtime.character.clientConfig?.telegram
                 ?.shouldRespondOnlyToMentions
@@ -1398,6 +1407,42 @@ export class MessageManager {
                 );
             }
 
+            // Handling tophat commands
+            if (
+                "text" in message &&
+                message.text?.includes(`/reply`) && this._isMessageForMe(message)
+            ) {
+                elizaLogger.info(`reply command detected executing context`);
+
+                // Generate response
+                const context = composeContext({
+                    state,
+                    template:
+                        this.runtime.character.templates
+                            ?.telegramMessageHandlerTemplate ||
+                        this.runtime.character?.templates
+                            ?.messageHandlerTemplate ||
+                        telegramMessageHandlerTemplate,
+                });
+
+                const responseContent = await this._generateResponse(
+                    memory,
+                    state,
+                    context
+                );
+
+                if (!responseContent || !responseContent.text) return;
+
+                // Execute callback to send messages and log memories
+                // const responseMessages = await callback(responseContent);
+
+                await this.runtime.processActions(
+                    memory,
+                    state.recentMessagesData,
+                    state,
+                    callback
+                );
+            } 
             await this.runtime.evaluate(memory, state, shouldRespond, callback);
         } catch (error) {
             elizaLogger.error("❌ Error handling message:", error);

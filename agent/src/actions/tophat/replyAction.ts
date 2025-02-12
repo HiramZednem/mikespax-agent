@@ -250,9 +250,9 @@ async function handleTextOnlyReply(
 }
 
 export const replyAction: Action = {
-    suppressInitialMessage: true,
     name: "REPLY_ACTION",
     similes: ["REPLY"],
+    suppressInitialMessage: true,
     description: "Handle a https link and reply to it",
     validate: async (
         runtime: IAgentRuntime,
@@ -312,12 +312,13 @@ ${content}`
             return false;
         }
     },
+    // aqui en los examples tengo que aniadir el usuario de discord y de telegram del bot
     examples: [
         [
             {
                 user: "{{user1}}",
                 content: {
-                    text: "/reply @{{agentName}} https://x.com/elonmusk/status/1889070627908145538",
+                    text: "@{{agentName}} /reply https://x.com/elonmusk/status/1889070627908145538",
                 },
             },
             {
@@ -332,7 +333,7 @@ ${content}`
             {
                 user: "{{user1}}",
                 content: {
-                    text: "/reply @{{agentName}} https://x.com/franperez_co/status/1887193960399229159",
+                    text: "@{{agentName}} /reply https://x.com/franperez_co/status/1887193960399229159",
                 },
             },
             {
