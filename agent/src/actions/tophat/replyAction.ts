@@ -1,8 +1,26 @@
-
-import { Action, elizaLogger, IAgentRuntime, Memory, State, composeContext, generateText, cleanJsonResponse, parseJSONObjectFromText, extractAttributes, truncateToCompleteSentence, ModelClass, HandlerCallback, IImageDescriptionService, ServiceType, stringToUuid, TemplateType } from "@elizaos/core";
-import { buildConversationThread, twitterMessageHandlerTemplate, twitterPostTemplate } from "./utils";
-
-
+import {
+    Action,
+    elizaLogger,
+    IAgentRuntime,
+    Memory,
+    State,
+    composeContext,
+    generateText,
+    cleanJsonResponse,
+    parseJSONObjectFromText,
+    extractAttributes,
+    truncateToCompleteSentence,
+    ModelClass,
+    HandlerCallback,
+    IImageDescriptionService,
+    ServiceType,
+    stringToUuid,
+    TemplateType,
+} from "@elizaos/core";
+import {
+    buildConversationThread,
+    twitterMessageHandlerTemplate,
+} from "./utils";
 
 const tweetTemplate = `
 # Context
@@ -24,49 +42,40 @@ Generate only the tweet text, no other commentary.
 
 Return the tweet in JSON format like: {"text": "your tweet here"}`;
 
-
 async function sendStandardTweet(
-        client: any,
-        content: string,
-        tweetId?: string,
-        mediaData?: any[]
-    ) {
-        try {
-            const result = await client.sendTweet(
-                        content,
-                        tweetId,
-                        mediaData
-                    )
-            
+    client: any,
+    content: string,
+    tweetId?: string,
+    mediaData?: any[]
+) {
+    try {
+        const result = await client.sendTweet(content, tweetId, mediaData);
 
+        const body = await result.json();
 
-
-            const body = await result.json();
-
-
-            // Check for Twitter API errors
-    if (body.errors) {
-        const error = body.errors[0];
-        elizaLogger.error(
-            `Twitter API error (${error.code}): ${error.message}`
-        );
-        return false;
-    }
-
-    // Check for successful tweet creation
-    if (!body?.data?.create_tweet?.tweet_results?.result) {
-        elizaLogger.error("Failed to post tweet: No tweet result in response");
-        return false;
-    }
-
-
-    
-            return body.data.create_tweet.tweet_results.result;
-        } catch (error) {
-            elizaLogger.error("Error sending standard Tweet:", error);
-            throw error;
+        // Check for Twitter API errors
+        if (body.errors) {
+            const error = body.errors[0];
+            elizaLogger.error(
+                `Twitter API error (${error.code}): ${error.message}`
+            );
+            return false;
         }
+
+        // Check for successful tweet creation
+        if (!body?.data?.create_tweet?.tweet_results?.result) {
+            elizaLogger.error(
+                "Failed to post tweet: No tweet result in response"
+            );
+            return false;
+        }
+
+        return body.data.create_tweet.tweet_results.result;
+    } catch (error) {
+        elizaLogger.error("Error sending standard Tweet:", error);
+        throw error;
     }
+}
 
 async function generateTweetContent(
     client: any,
@@ -79,7 +88,7 @@ async function generateTweetContent(
 ): Promise<string> {
     const context = composeContext({
         state: tweetState,
-        template: twitterPostTemplate,
+        template: twitterMessageHandlerTemplate,
     });
 
     const response = await generateText({
@@ -94,7 +103,7 @@ async function generateTweetContent(
     const rawTweetContent = cleanJsonResponse(response);
 
     // Try to parse as JSON first
-  
+
     let tweetTextForPosting = null;
     let mediaData = null;
 
@@ -113,9 +122,7 @@ async function generateTweetContent(
 
     // Try extracting text attribute
     if (!tweetTextForPosting) {
-        const parsingText = extractAttributes(rawTweetContent, [
-            "text",
-        ]).text;
+        const parsingText = extractAttributes(rawTweetContent, ["text"]).text;
         if (parsingText) {
             tweetTextForPosting = truncateToCompleteSentence(
                 extractAttributes(rawTweetContent, ["text"]).text,
@@ -129,7 +136,7 @@ async function generateTweetContent(
         tweetTextForPosting = rawTweetContent;
     }
 
-    const maxTweetLength = 280
+    const maxTweetLength = 280;
     // Truncate the content to the maximum tweet length specified in the environment settings, ensuring the truncation respects sentence boundaries.
     if (maxTweetLength) {
         tweetTextForPosting = truncateToCompleteSentence(
@@ -138,15 +145,12 @@ async function generateTweetContent(
         );
     }
 
-    const removeQuotes = (str: string) =>
-        str.replace(/^['"](.*)['"]$/, "$1");
+    const removeQuotes = (str: string) => str.replace(/^['"](.*)['"]$/, "$1");
 
     const fixNewLines = (str: string) => str.replaceAll(/\\n/g, "\n\n"); //ensures double spaces
 
     // Final cleaning
-    tweetTextForPosting = removeQuotes(
-        fixNewLines(tweetTextForPosting)
-    );
+    tweetTextForPosting = removeQuotes(fixNewLines(tweetTextForPosting));
 
     return tweetTextForPosting;
 }
@@ -188,10 +192,9 @@ async function handleTextOnlyReply(
         let quotedContent = "";
         if (tweet.quotedStatusId) {
             try {
-                const quotedTweet =
-                    await client.twitterClient.getTweet(
-                        tweet.quotedStatusId
-                    );
+                const quotedTweet = await client.getTweet(
+                    tweet.quotedStatusId
+                );
                 if (quotedTweet) {
                     quotedContent = `\nQuoted Tweet from @${quotedTweet.username}:\n${quotedTweet.text}`;
                 }
@@ -223,42 +226,37 @@ async function handleTextOnlyReply(
             }
         );
 
-        // NUNCA HABIA LLEGADO TAN LEJOS, PERO LLEGE HASTA ACA
         // Generate and clean the reply content
-        const replyText = await generateTweetContent(client, runtime, enrichedState, {
-            template:
-                runtime.character.templates
-                    ?.twitterMessageHandlerTemplate ||
-                twitterMessageHandlerTemplate,
-        });
+        const replyText = await generateTweetContent(
+            client,
+            runtime,
+            enrichedState,
+            {template: twitterMessageHandlerTemplate}
+        );
 
         if (!replyText) {
             elizaLogger.error("Failed to generate valid reply content");
             return;
         }
 
-
         elizaLogger.debug("Final reply text to be sent:", replyText);
 
         let result;
 
-    
-            result = await sendStandardTweet(
-                client,
-                replyText,
-                tweet.id
-            );
-
+        result = await sendStandardTweet(client, replyText, tweet.id);
 
         if (result) {
             elizaLogger.log("Successfully posted reply tweet");
-            // executedActions.push("reply");
 
             // Cache generation context for debugging
             await runtime.cacheManager.set(
                 `twitter/reply_generation_${tweet.id}.txt`,
                 `Context:\n${enrichedState}\n\nGenerated Reply:\n${replyText}`
             );
+
+            // Here i return the tweet link
+            return `https://x.com/${client.auth.userProfile.username}/status/${result.rest_id}`
+
         } else {
             elizaLogger.error("Tweet reply creation failed");
         }
@@ -266,19 +264,6 @@ async function handleTextOnlyReply(
         elizaLogger.error("Error in handleTextOnlyReply:", error);
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 export const replyAction: Action = {
     suppressInitialMessage: true,
@@ -303,45 +288,29 @@ export const replyAction: Action = {
         message: Memory,
         state?: State,
         options?: { [key: string]: unknown },
-        callback?: HandlerCallback,
+        callback?: HandlerCallback
     ): Promise<boolean> => {
         try {
-            // Generate tweet content using context
-            elizaLogger.info("Generating tweet content...");
-
-
             const twitterClient = runtime.clients.twitter?.client?.twitterClient;
             if (!twitterClient) {
                 elizaLogger.error("Twitter client not found");
                 return;
-            } 
+            }
 
             // Extract the tweet URL from the message
             const tweetUrl = message.content.text.split("/reply")[1];
             const tweetId = tweetUrl.split("/").pop();
-            
-            
+
             // Get the tweet content
             const tweet = await twitterClient.getTweet(tweetId);
 
-
-            // const tweetContent = await composeTweet(runtime, message, state);
-
-            // if (!tweetContent) {
-            //     elizaLogger.error("No content generated for tweet");
-            //     return false;
-            // }
-
- await handleTextOnlyReply(
-                tweet,
-                state,
-                runtime,
-                twitterClient
-            );
-           
+            const replyUrl = await handleTextOnlyReply(tweet, state, runtime, twitterClient);
 
 
-            callback({text:`The url of the tweet is ${tweetUrl} and the main text is ${tweet.text}`});
+            const response = `[🐦 reply]: ${replyUrl}`
+            callback({
+                text: response,
+            });
         } catch (error) {
             elizaLogger.error("Error in post action:", error);
             return false;
@@ -351,25 +320,29 @@ export const replyAction: Action = {
         [
             {
                 user: "{{user1}}",
-                content: { text: "/reply @{{agentName}} https://x.com/elonmusk/status/1889070627908145538" },
+                content: {
+                    text: "/reply @{{agentName}} https://x.com/elonmusk/status/1889070627908145538",
+                },
             },
             {
                 user: "{{agentName}}",
                 content: {
-                    text: "I'll reply right away!",
-                    action: "REPLY_ACTION", 
+                    text: "",
+                    action: "REPLY_ACTION",
                 },
             },
         ],
         [
             {
                 user: "{{user1}}",
-                content: { text: "/reply @{{agentName}} https://x.com/franperez_co/status/1887193960399229159" },
+                content: {
+                    text: "/reply @{{agentName}} https://x.com/franperez_co/status/1887193960399229159",
+                },
             },
             {
                 user: "{{agentName}}",
                 content: {
-                    text: "Generating a reply.",
+                    text: "",
                     action: "REPLY_ACTION",
                 },
             },
