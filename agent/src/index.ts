@@ -54,7 +54,7 @@ import { fileURLToPath } from "url";
 import yargs from "yargs";
 import { MongoClient } from "mongodb";
 
-import { postTweetAction, trendAnalysisAction } from "./actions";
+import { postTweetAction, replyAction, trendAnalysisAction } from "./actions";
 import { redditProvider } from "./providers";
 import { blmCharacter, jesusCharacter, hankCharacter } from "./characters";
 const __filename = fileURLToPath(import.meta.url); // get the resolved path to the file
@@ -760,7 +760,7 @@ export async function createAgent(
             .filter(Boolean),
         providers: [redditProvider],
         managers: [],
-        actions: [postTweetAction, trendAnalysisAction],
+        actions: [postTweetAction, trendAnalysisAction, replyAction],
         cacheManager: cache,
         fetch: logFetch,
     });

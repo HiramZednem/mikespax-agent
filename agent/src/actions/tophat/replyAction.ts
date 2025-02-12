@@ -22,26 +22,6 @@ import {
     twitterMessageHandlerTemplate,
 } from "./utils";
 
-const tweetTemplate = `
-# Context
-
-# Post Directions
-{{postDirections}}
-
-**REQUESTED TOPIC MESSAGE TO TWEET ABOUT: {{requestedTopic}}**
-
-# Task
-Generate a tweet that:
-1. Relates to requested topic
-2. Matches the character's style and voice
-3. Is concise and engaging
-4. Must be UNDER 180 characters (this is a strict requirement)
-5. Speaks from the perspective of {{agentName}}
-
-Generate only the tweet text, no other commentary.
-
-Return the tweet in JSON format like: {"text": "your tweet here"}`;
-
 async function sendStandardTweet(
     client: any,
     content: string,
@@ -112,13 +92,6 @@ async function generateTweetContent(
     if (parsedResponse?.text) {
         tweetTextForPosting = parsedResponse.text;
     }
-
-    // if (
-    //     parsedResponse?.attachments &&
-    //     parsedResponse?.attachments.length > 0
-    // ) {
-    //     mediaData = await fetchMediaData(parsedResponse.attachments);
-    // }
 
     // Try extracting text attribute
     if (!tweetTextForPosting) {
@@ -255,7 +228,9 @@ async function handleTextOnlyReply(
             );
 
             // Here i return the tweet link
-            return `https://x.com/${client.auth.userProfile.username}/status/${result.rest_id}`
+            const replyUrl = `https://twitter.com/${client.auth.userProfile.username}/status/${result.rest_id}`;
+            const content = `\`\`\`${replyText}\`\`\``;
+            return { replyUrl, content };
 
         } else {
             elizaLogger.error("Tweet reply creation failed");
@@ -304,10 +279,11 @@ export const replyAction: Action = {
             // Get the tweet content
             const tweet = await twitterClient.getTweet(tweetId);
 
-            const replyUrl = await handleTextOnlyReply(tweet, state, runtime, twitterClient);
+            const {replyUrl, content} = await handleTextOnlyReply(tweet, state, runtime, twitterClient);
 
 
-            const response = `[🐦 reply]: ${replyUrl}`
+            const response = `[🐦 reply]: ${replyUrl}
+${content}`
             callback({
                 text: response,
             });
