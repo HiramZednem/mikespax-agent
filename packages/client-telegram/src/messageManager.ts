@@ -1414,9 +1414,28 @@ export class MessageManager {
             ) {
                 elizaLogger.info(`reply command detected executing context`);
 
+                const content: Content = {
+                    text: "(REPLY_ACTION)",
+                    action: "REPLY_ACTION"
+                }
+
+                const responseMessage: Memory = {
+                    id: stringToUuid(messageId + "-" + this.runtime.agentId),
+                    userId: this.runtime.agentId,
+                    content: content,
+                    embedding: getEmbeddingZeroVector(),
+                    createdAt: Date.now(),
+                    agentId: this.runtime.agentId,
+                    roomId: stringToUuid(
+                        this.autoPostConfig.mainChannelId +
+                            "-" +
+                            this.runtime.agentId
+                    )
+                };
+
                 await this.runtime.processActions(
                     memory,
-                    state.recentMessagesData,
+                    [responseMessage],
                     state,
                     callback
                 );
