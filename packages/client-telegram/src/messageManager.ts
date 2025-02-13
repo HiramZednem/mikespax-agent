@@ -1414,34 +1414,13 @@ export class MessageManager {
             ) {
                 elizaLogger.info(`reply command detected executing context`);
 
-                // Generate response
-                const context = composeContext({
-                    state,
-                    template:
-                        this.runtime.character.templates
-                            ?.telegramMessageHandlerTemplate ||
-                        this.runtime.character?.templates
-                            ?.messageHandlerTemplate ||
-                        telegramMessageHandlerTemplate,
-                });
-
-                const responseContent = await this._generateResponse(
-                    memory,
-                    state,
-                    context
-                );
-
-                if (!responseContent || !responseContent.text) return;
-
-                // Execute callback to send messages and log memories
-                // const responseMessages = await callback(responseContent);
-
                 await this.runtime.processActions(
                     memory,
                     state.recentMessagesData,
                     state,
                     callback
                 );
+                return
             } 
             await this.runtime.evaluate(memory, state, shouldRespond, callback);
         } catch (error) {

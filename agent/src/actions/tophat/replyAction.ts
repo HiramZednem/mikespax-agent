@@ -238,7 +238,7 @@ async function handleTextOnlyReply(
 
             // Here i return the tweet link
             const replyUrl = `https://twitter.com/${client.auth.userProfile.username}/status/${result.rest_id}`;
-            const content = `\`\`\`${replyText}\`\`\``;
+            const content = `${replyText}`;
             return { replyUrl, content };
 
         } else {
@@ -292,6 +292,7 @@ export const replyAction: Action = {
 
 
             const response = `[🐦 reply]: ${replyUrl}
+            
 ${content}`
 
             if (
@@ -299,7 +300,9 @@ ${content}`
                 process.env.TWITTER_DRY_RUN.toLowerCase() === "true"
             ) {
                 callback({
-                    text:`Dry run: would have posted tweet: ${content}`
+                    text:`Dry run: would have posted tweet: 
+
+${content}`
                 });
                 return true;
             }
