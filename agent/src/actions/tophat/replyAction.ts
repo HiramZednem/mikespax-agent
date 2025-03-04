@@ -21,6 +21,7 @@ import {
     buildConversationThread,
     twitterMessageHandlerTemplate,
 } from "./utils";
+import { TwitterPostClient } from "../../../../packages/client-twitter/src/post";
 
 async function sendStandardTweet(
     client: any,
@@ -74,7 +75,7 @@ async function generateTweetContent(
         template?: TemplateType;
         context?: string;
     }
-): Promise<string> {
+) {
     const context = composeContext({
         state: tweetState,
         template: twitterMessageHandlerTemplate,
@@ -133,8 +134,9 @@ async function generateTweetContent(
 
     // Final cleaning
     tweetTextForPosting = removeQuotes(fixNewLines(tweetTextForPosting));
+    const replyText = tweetTextForPosting;
 
-    return tweetTextForPosting;
+    return {replyText, rawTweetContent};
 }
 
 async function handleTextOnlyReply(
@@ -186,12 +188,11 @@ async function handleTextOnlyReply(
         }
 
         // Compose rich state with all context
+        const roomId = stringToUuid(tweet.conversationId + "-" + runtime.agentId);
         const enrichedState = await runtime.composeState(
             {
                 userId: runtime.agentId,
-                roomId: stringToUuid(
-                    tweet.conversationId + "-" + runtime.agentId
-                ),
+                roomId: roomId,
                 agentId: runtime.agentId,
                 content: { text: tweet.text, action: "" },
             },
@@ -209,7 +210,7 @@ async function handleTextOnlyReply(
         );
 
         // Generate and clean the reply content
-        const replyText = await generateTweetContent(
+        const {replyText, rawTweetContent} = await generateTweetContent(
             client,
             runtime,
             enrichedState,
@@ -239,7 +240,7 @@ async function handleTextOnlyReply(
             // Here i return the tweet link
             const replyUrl = `https://twitter.com/${client.auth.userProfile.username}/status/${result.rest_id}`;
             const content = `${replyText}`;
-            return { replyUrl, content };
+            return { replyUrl, content, rawTweetContent, roomId };
 
         } else {
             elizaLogger.error("Tweet reply creation failed");
@@ -275,6 +276,7 @@ export const replyAction: Action = {
         callback?: HandlerCallback
     ): Promise<boolean> => {
         try {
+            const twitterPostClient: TwitterPostClient = runtime.clients.twitter?.post;
             const twitterClient = runtime.clients.twitter?.client?.twitterClient;
             if (!twitterClient) {
                 elizaLogger.error("Twitter client not found");
@@ -288,7 +290,7 @@ export const replyAction: Action = {
             // Get the tweet content
             const tweet = await twitterClient.getTweet(tweetId);
 
-            const {replyUrl, content} = await handleTextOnlyReply(tweet, state, runtime, twitterClient);
+            const {replyUrl, content, rawTweetContent, roomId} = await handleTextOnlyReply(tweet, state, runtime, twitterClient);
 
 
             const response = `[🐦 reply]: ${replyUrl}
@@ -307,9 +309,11 @@ ${content}`
                 return true;
             }
 
-            callback({
-                text: response,
-            });
+            twitterPostClient.sendForApproval(content, roomId, rawTweetContent);
+
+            // callback({
+            //     text: response,
+            // });
         } catch (error) {
             elizaLogger.error("Error in reply action:", error);
             return false;

@@ -1250,7 +1250,7 @@ export class TwitterPostClient {
         this.stopProcessingActions = true;
     }
 
-    private async sendForApproval(
+    async sendForApproval(
         tweetTextForPosting: string,
         roomId: UUID,
         rawTweetContent: string
