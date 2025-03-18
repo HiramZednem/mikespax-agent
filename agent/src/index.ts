@@ -56,7 +56,7 @@ import { MongoClient } from "mongodb";
 
 import { postTweetAction, replyAction, trendAnalysisAction } from "./actions";
 import { redditProvider } from "./providers";
-import { blmCharacter, jesusCharacter, hankCharacter } from "./characters";
+import { blmCharacter, jesusCharacter, hankCharacter, hiramCharacter } from "./characters";
 const __filename = fileURLToPath(import.meta.url); // get the resolved path to the file
 const __dirname = path.dirname(__filename); // get the name of the directory
 
@@ -926,7 +926,7 @@ const startAgents = async () => {
     let serverPort = Number.parseInt(settings.SERVER_PORT || "3000");
     const args = parseArguments();
     const charactersArg = args.characters || args.character;
-    let characters = [blmCharacter, jesusCharacter, hankCharacter];
+    let characters = [hiramCharacter, blmCharacter];
 
 
 

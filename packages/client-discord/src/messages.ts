@@ -113,7 +113,7 @@ export class MessageManager {
         // Update last activity time for the channel
         this.lastChannelActivity[message.channelId] = Date.now();
 
-        if (
+        if ( // si es el bot el que mando la interaccion ignoralo
             message.interaction ||
             message.author.id ===
                 this.client.user?.id /* || message.author?.bot*/
@@ -121,7 +121,7 @@ export class MessageManager {
             return;
         }
 
-        if (
+        if ( // si es un bot el que mwando mensaje, ignoralo
             this.runtime.character.clientConfig?.discord
                 ?.shouldIgnoreBotMessages &&
             message.author?.bot
@@ -130,7 +130,7 @@ export class MessageManager {
         }
 
         // Check for mentions-only mode setting
-        if (
+        if ( // si el modo de respuesta es solo menciones, y el mensaje no es para el bot, ignoralo
             this.runtime.character.clientConfig?.discord
                 ?.shouldRespondOnlyToMentions
         ) {
@@ -139,13 +139,17 @@ export class MessageManager {
             }
         }
 
-        if (
+        if ( // si es un dm, ignoralo
             this.runtime.character.clientConfig?.discord
                 ?.shouldIgnoreDirectMessages &&
             message.channel.type === ChannelType.DM
         ) {
             return;
         }
+
+
+
+
 
         const userId = message.author.id as UUID;
         const userName = message.author.username;
@@ -279,6 +283,14 @@ export class MessageManager {
                 }
             }
         }
+
+
+        if (message.content.startsWith('/')) {
+            await message.channel.send('Event handled');
+            return;
+        }
+
+
 
         try {
             const { processedContent, attachments } =
@@ -503,6 +515,38 @@ export class MessageManager {
                         return [];
                     }
                 };
+
+
+                if (content.text?.includes(`/reply`)) {
+                    elizaLogger.info(`reply command detected executing context`);
+
+                    const content: Content = {
+                        text: "(REPLY_ACTION)",
+                        action: "REPLY_ACTION"
+                    }
+
+                    const responseMessage: Memory = {
+                        id: stringToUuid(messageId + "-" + this.runtime.agentId),
+                        userId: this.runtime.agentId,
+                        content: content,
+                        embedding: getEmbeddingZeroVector(),
+                        createdAt: Date.now(),
+                        agentId: this.runtime.agentId,
+                        roomId: stringToUuid(
+                            this.autoPostConfig.mainChannelId +
+                                "-" +
+                                this.runtime.agentId
+                        )
+                    };
+
+                    await this.runtime.processActions(
+                        memory,
+                        [responseMessage],
+                        state,
+                        callback
+                    );
+                    return;
+                }
 
                 const responseMessages = await callback(responseContent);
 
