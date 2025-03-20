@@ -284,14 +284,6 @@ export class MessageManager {
             }
         }
 
-
-        if (message.content.startsWith('/')) {
-            await message.channel.send('Event handled');
-            return;
-        }
-
-
-
         try {
             const { processedContent, attachments } =
                 await this.processMessageMedia(message);

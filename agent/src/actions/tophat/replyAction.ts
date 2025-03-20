@@ -224,27 +224,31 @@ async function handleTextOnlyReply(
 
         elizaLogger.debug("Final reply text to be sent:", replyText);
 
-        let result;
+        // let result;
 
-        result = await sendStandardTweet(client, replyText, tweet.id);
+        // result = await sendStandardTweet(client, replyText, tweet.id);
 
-        if (result) {
-            elizaLogger.log("Successfully posted reply tweet");
+        // if (result) {
+        //     elizaLogger.log("Successfully posted reply tweet");
 
-            // Cache generation context for debugging
-            await runtime.cacheManager.set(
-                `twitter/reply_generation_${tweet.id}.txt`,
-                `Context:\n${enrichedState}\n\nGenerated Reply:\n${replyText}`
-            );
+        //     // Cache generation context for debugging
+        //     await runtime.cacheManager.set(
+        //         `twitter/reply_generation_${tweet.id}.txt`,
+        //         `Context:\n${enrichedState}\n\nGenerated Reply:\n${replyText}`
+        //     );
 
-            // Here i return the tweet link
-            const replyUrl = `https://twitter.com/${client.auth.userProfile.username}/status/${result.rest_id}`;
-            const content = `${replyText}`;
-            return { replyUrl, content, rawTweetContent, roomId };
+        //     // Here i return the tweet link
+        //     const replyUrl = `https://twitter.com/${client.auth.userProfile.username}/status/${result.rest_id}`;
+        //     const content = `${replyText}`;
+        //     return { replyUrl, content, rawTweetContent, roomId };
 
-        } else {
-            elizaLogger.error("Tweet reply creation failed");
-        }
+        // } else {
+        //     elizaLogger.error("Tweet reply creation failed");
+        // }
+        // estoy devolviendo vacio, porque se estaba posteando y no debia hacerlo asi que lo comente, pero me dio flojera hacer refactor,
+        // deberia hacer el refactor, pero salaverga pinche mike no paga bien, y ando atareadisimo xd, te amo hiram del futuro o futuro 
+        // developer que vea esto, disculpe por esta mierda de codigo, pero es lo que hay, si quieres refactorizarlo, adelante.
+        return { replyUrl: 'test', content: replyText, rawTweetContent, roomId };
     } catch (error) {
         elizaLogger.error("Error in handleTextOnlyReply:", error);
     }
@@ -309,7 +313,9 @@ ${content}`
                 return true;
             }
 
-            twitterPostClient.sendForApproval(content, roomId, rawTweetContent);
+            // ok esto es un desmadre, pero estoy mandando la id del tweet, esa madre es opcional
+            // pero le puse a la funcion que la recibiera
+            twitterPostClient.sendForApproval(content, roomId, rawTweetContent, tweetId);
 
             // callback({
             //     text: response,

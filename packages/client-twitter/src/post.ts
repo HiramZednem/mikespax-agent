@@ -54,6 +54,9 @@ Write a post that is {{adjective}} about {{topic}} (without mentioning {{topic}}
 Your response should be 1, 2, or 3 sentences (choose the length at random).
 Your response should not contain any questions. Brief, concise statements only. The total character count MUST be less than {{maxTweetLength}}. No emojis. Use \\n\\n (double spaces) between statements if there are multiple statements in your response.`;
 
+
+
+export const postActionResponseFooterEdited = `Choose [REPLY] if appropriate. The action must be on its own line. Your response must only include the chosen action.`;
 export const twitterActionTemplate =
     `
 # INSTRUCTIONS: Determine actions for {{agentName}} (@{{twitterUserName}}) based on:
@@ -71,16 +74,25 @@ Guidelines:
   - Promotional/marketing unless directly relevant
 
 Actions (respond only with tags):
-[LIKE] - Perfect topic match AND aligns with character (9.8/10)
-[RETWEET] - Exceptional content that embodies character's expertise (9.5/10)
-[QUOTE] - Can add substantial domain expertise (9.5/10)
-[REPLY] - Can contribute meaningful, expert-level insight (9.5/10)
+[REPLY] - Can contribute meaningful, expert-level insight (9/10)
 
 Tweet:
 {{currentTweet}}
 
 # Respond with qualifying action tags only. Default to NO action unless extremely confident of relevance.` +
-    postActionResponseFooter;
+    postActionResponseFooterEdited;
+
+// here i changed the footer of the core for mine, looking for reply only
+
+/**
+ * 
+ * I deleted the like, retweet and quote at the moment focusing only on reply with approval
+ * Actions (respond only with tags):
+[LIKE] - Perfect topic match AND aligns with character (9.8/10)
+[RETWEET] - Exceptional content that embodies character's expertise (9.5/10)
+[QUOTE] - Can add substantial domain expertise (9.5/10)
+[REPLY] - Can contribute meaningful, expert-level insight (9.5/10) 
+ */
 
 interface PendingTweet {
     tweetTextForPosting: string;
@@ -89,6 +101,7 @@ interface PendingTweet {
     discordMessageId: string;
     channelId: string;
     timestamp: number;
+    ifReply?: string;
 }
 
 type PendingTweetApprovalStatus = "PENDING" | "APPROVED" | "REJECTED";
@@ -1057,11 +1070,17 @@ export class TwitterPostClient {
 
                 if (actionResponse.reply) {
                     try {
-                        await this.handleTextOnlyReply(
-                            tweet,
-                            tweetState,
-                            executedActions
+                        // aqui tengo que mover algo para que se meta el approval, sobre todo habilitar las acciones del bot
+                        await this.sendForApproval(
+                            tweet.text,
+                            roomId,
+                            tweet.text,
                         );
+                        // await this.handleTextOnlyReply(
+                        //     tweet,
+                        //     tweetState,
+                        //     executedActions
+                        // );
                     } catch (error) {
                         elizaLogger.error(
                             `Error replying to tweet ${tweet.id}:`,
@@ -1250,10 +1269,13 @@ export class TwitterPostClient {
         this.stopProcessingActions = true;
     }
 
+    // si sendForApproval recibe tweetId viene con un id, en caso contrario es undefined y guarda undefined abajo
+    // entonces cuando se aprueve lo va a mandar sin esa madre
     async sendForApproval(
         tweetTextForPosting: string,
         roomId: UUID,
-        rawTweetContent: string
+        rawTweetContent: string,
+        tweetId?: string
     ): Promise<string | null> {
         try {
             const embed = {
@@ -1301,6 +1323,7 @@ export class TwitterPostClient {
                 discordMessageId: message.id,
                 channelId: this.discordApprovalChannelId,
                 timestamp: Date.now(),
+                ifReply: tweetId 
             });
 
             // Store updated array
@@ -1412,25 +1435,25 @@ export class TwitterPostClient {
                 elizaLogger.log("Pending tweet expired, cleaning up");
 
                 // Notify on Discord about expiration
-                try {
-                    const channel =
-                        await this.discordClientForApproval.channels.fetch(
-                            pendingTweet.channelId
-                        );
-                    if (channel instanceof TextChannel) {
-                        const originalMessage = await channel.messages.fetch(
-                            pendingTweet.discordMessageId
-                        );
-                        await originalMessage.reply(
-                            "This tweet approval request has expired (24h timeout)."
-                        );
-                    }
-                } catch (error) {
-                    elizaLogger.error(
-                        "Error sending expiration notification:",
-                        error
-                    );
-                }
+                // try {
+                //     const channel =
+                //         await this.discordClientForApproval.channels.fetch(
+                //             pendingTweet.channelId
+                //         );
+                //     if (channel instanceof TextChannel) {
+                //         const originalMessage = await channel.messages.fetch(
+                //             pendingTweet.discordMessageId
+                //         );
+                //         await originalMessage.reply(
+                //             "This tweet approval request has expired (24h timeout)."
+                //         );
+                //     }
+                // } catch (error) {
+                //     elizaLogger.error(
+                //         "Error sending expiration notification:",
+                //         error
+                //     );
+                // }
 
                 await this.cleanupPendingTweet(pendingTweet.discordMessageId);
                 return;
@@ -1443,14 +1466,23 @@ export class TwitterPostClient {
 
             if (approvalStatus === "APPROVED") {
                 elizaLogger.log("Tweet Approved, Posting");
-                await this.postTweet(
-                    this.runtime,
-                    this.client,
-                    pendingTweet.tweetTextForPosting,
-                    pendingTweet.roomId,
-                    pendingTweet.rawTweetContent,
-                    this.twitterUsername
-                );
+                if (!pendingTweet.ifReply) {
+                    await this.postTweet(
+                        this.runtime,
+                        this.client,
+                        pendingTweet.tweetTextForPosting,
+                        pendingTweet.roomId,
+                        pendingTweet.rawTweetContent,
+                        this.twitterUsername
+                    );
+                } else {
+                    await this.sendStandardTweet(
+                        this.client,
+                        pendingTweet.tweetTextForPosting,
+                        pendingTweet.ifReply
+                    );
+                }
+                // this.client.twitterClient.sendTweet(pendingTweet.tweetTextForPosting,);
 
                 // Notify on Discord about posting
                 try {
