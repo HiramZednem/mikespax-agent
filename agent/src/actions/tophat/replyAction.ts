@@ -22,50 +22,8 @@ import {
     twitterMessageHandlerTemplate,
 } from "./utils";
 import { TwitterPostClient } from "../../../../packages/client-twitter/src/post";
+import { Scraper, Tweet } from "agent-twitter-client";
 
-async function sendStandardTweet(
-    client: any,
-    content: string,
-    tweetId?: string,
-    mediaData?: any[]
-) {
-    try {
-        if (
-            process.env.TWITTER_DRY_RUN &&
-            process.env.TWITTER_DRY_RUN.toLowerCase() === "true"
-        ) {
-            elizaLogger.info(
-                `Dry run: would have posted tweet: ${content}`
-            );
-            return true;
-        }
-        const result = await client.sendTweet(content, tweetId, mediaData);
-
-        const body = await result.json();
-
-        // Check for Twitter API errors
-        if (body.errors) {
-            const error = body.errors[0];
-            elizaLogger.error(
-                `Twitter API error (${error.code}): ${error.message}`
-            );
-            return false;
-        }
-
-        // Check for successful tweet creation
-        if (!body?.data?.create_tweet?.tweet_results?.result) {
-            elizaLogger.error(
-                "Failed to post tweet: No tweet result in response"
-            );
-            return false;
-        }
-
-        return body.data.create_tweet.tweet_results.result;
-    } catch (error) {
-        elizaLogger.error("Error sending standard Tweet:", error);
-        throw error;
-    }
-}
 
 async function generateTweetContent(
     client: any,
@@ -254,10 +212,13 @@ async function handleTextOnlyReply(
     }
 }
 
+/**
+ * La accion de responder, no manda un tweet directamente, lo unico que hace es que procesa el tweet 
+ * y lo manda a la cola de aprobacion. 
+ */
 export const replyAction: Action = {
     name: "REPLY_ACTION",
     similes: ["REPLY"],
-    suppressInitialMessage: true,
     description: "Handle a https link and reply to it",
     validate: async (
         runtime: IAgentRuntime,
@@ -281,7 +242,7 @@ export const replyAction: Action = {
     ): Promise<boolean> => {
         try {
             const twitterPostClient: TwitterPostClient = runtime.clients.twitter?.post;
-            const twitterClient = runtime.clients.twitter?.client?.twitterClient;
+            const twitterClient: Scraper = runtime.clients.twitter?.client?.twitterClient;
             if (!twitterClient) {
                 elizaLogger.error("Twitter client not found");
                 return;
@@ -292,34 +253,14 @@ export const replyAction: Action = {
             const tweetId = tweetUrl.split("/").pop();
 
             // Get the tweet content
-            const tweet = await twitterClient.getTweet(tweetId);
+            const tweet: Tweet = await twitterClient.getTweet(tweetId);
 
             const {replyUrl, content, rawTweetContent, roomId} = await handleTextOnlyReply(tweet, state, runtime, twitterClient);
 
 
-            const response = `[🐦 reply]: ${replyUrl}
-            
-${content}`
-
-            if (
-                process.env.TWITTER_DRY_RUN &&
-                process.env.TWITTER_DRY_RUN.toLowerCase() === "true"
-            ) {
-                callback({
-                    text:`Dry run: would have posted tweet: 
-
-${content}`
-                });
-                return true;
-            }
-
             // ok esto es un desmadre, pero estoy mandando la id del tweet, esa madre es opcional
             // pero le puse a la funcion que la recibiera
             twitterPostClient.sendForApproval(content, roomId, rawTweetContent, tweetId);
-
-            // callback({
-            //     text: response,
-            // });
         } catch (error) {
             elizaLogger.error("Error in reply action:", error);
             return false;
