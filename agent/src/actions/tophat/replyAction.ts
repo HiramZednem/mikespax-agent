@@ -4,213 +4,11 @@ import {
     IAgentRuntime,
     Memory,
     State,
-    composeContext,
-    generateText,
-    cleanJsonResponse,
-    parseJSONObjectFromText,
-    extractAttributes,
-    truncateToCompleteSentence,
-    ModelClass,
     HandlerCallback,
-    IImageDescriptionService,
-    ServiceType,
-    stringToUuid,
-    TemplateType,
 } from "@elizaos/core";
-import {
-    buildConversationThread,
-    twitterMessageHandlerTemplate,
-} from "./utils";
 import { TwitterPostClient } from "../../../../packages/client-twitter/src/post";
 import { Scraper, Tweet } from "agent-twitter-client";
 
-
-async function generateTweetContent(
-    client: any,
-    runtime: IAgentRuntime,
-    tweetState: any,
-    options?: {
-        template?: TemplateType;
-        context?: string;
-    }
-) {
-    const context = composeContext({
-        state: tweetState,
-        template: twitterMessageHandlerTemplate,
-    });
-
-    const response = await generateText({
-        runtime: runtime,
-        context: context,
-        modelClass: ModelClass.SMALL,
-    });
-
-    elizaLogger.log("generate tweet content response:\n" + response);
-
-    // First clean up any markdown and newlines
-    const rawTweetContent = cleanJsonResponse(response);
-
-    // Try to parse as JSON first
-
-    let tweetTextForPosting = null;
-    let mediaData = null;
-
-    // Try parsing as JSON first
-    const parsedResponse = parseJSONObjectFromText(rawTweetContent);
-    if (parsedResponse?.text) {
-        tweetTextForPosting = parsedResponse.text;
-    }
-
-    // Try extracting text attribute
-    if (!tweetTextForPosting) {
-        const parsingText = extractAttributes(rawTweetContent, ["text"]).text;
-        if (parsingText) {
-            tweetTextForPosting = truncateToCompleteSentence(
-                extractAttributes(rawTweetContent, ["text"]).text,
-                this.client.twitterConfig.MAX_TWEET_LENGTH
-            );
-        }
-    }
-
-    // Use the raw text
-    if (!tweetTextForPosting) {
-        tweetTextForPosting = rawTweetContent;
-    }
-
-    const maxTweetLength = 280;
-    // Truncate the content to the maximum tweet length specified in the environment settings, ensuring the truncation respects sentence boundaries.
-    if (maxTweetLength) {
-        tweetTextForPosting = truncateToCompleteSentence(
-            tweetTextForPosting,
-            maxTweetLength
-        );
-    }
-
-    const removeQuotes = (str: string) => str.replace(/^['"](.*)['"]$/, "$1");
-
-    const fixNewLines = (str: string) => str.replaceAll(/\\n/g, "\n\n"); //ensures double spaces
-
-    // Final cleaning
-    tweetTextForPosting = removeQuotes(fixNewLines(tweetTextForPosting));
-    const replyText = tweetTextForPosting;
-
-    return {replyText, rawTweetContent};
-}
-
-async function handleTextOnlyReply(
-    tweet: any,
-    tweetState: any,
-    runtime: IAgentRuntime,
-    client: any
-) {
-    try {
-        // Build conversation thread for context
-        // const thread = await buildConversationThread(tweet, client, runtime);
-        // const formattedConversation = thread
-        //     .map(
-        //         (t) =>
-        //             `@${t.username} (${new Date(
-        //                 t.timestamp * 1000
-        //             ).toLocaleString()}): ${t.text}`
-        //     )
-        //     .join("\n\n");
-
-        const formattedConversation = "";
-        // Generate image descriptions if present
-        const imageDescriptions = [];
-        if (tweet.photos?.length > 0) {
-            elizaLogger.log("Processing images in tweet for context");
-            for (const photo of tweet.photos) {
-                const description = await runtime
-                    .getService<IImageDescriptionService>(
-                        ServiceType.IMAGE_DESCRIPTION
-                    )
-                    .describeImage(photo.url);
-                imageDescriptions.push(description);
-            }
-        }
-
-        // Handle quoted tweet if present
-        let quotedContent = "";
-        if (tweet.quotedStatusId) {
-            try {
-                const quotedTweet = await client.getTweet(
-                    tweet.quotedStatusId
-                );
-                if (quotedTweet) {
-                    quotedContent = `\nQuoted Tweet from @${quotedTweet.username}:\n${quotedTweet.text}`;
-                }
-            } catch (error) {
-                elizaLogger.error("Error fetching quoted tweet:", error);
-            }
-        }
-
-        // Compose rich state with all context
-        const roomId = stringToUuid(tweet.conversationId + "-" + runtime.agentId);
-        const enrichedState = await runtime.composeState(
-            {
-                userId: runtime.agentId,
-                roomId: roomId,
-                agentId: runtime.agentId,
-                content: { text: tweet.text, action: "" },
-            },
-            {
-                currentPost: `From @${tweet.username}: ${tweet.text}`,
-                formattedConversation,
-                imageContext:
-                    imageDescriptions.length > 0
-                        ? `\nImages in Tweet:\n${imageDescriptions
-                              .map((desc, i) => `Image ${i + 1}: ${desc}`)
-                              .join("\n")}`
-                        : "",
-                quotedContent,
-            }
-        );
-
-        // Generate and clean the reply content
-        const {replyText, rawTweetContent} = await generateTweetContent(
-            client,
-            runtime,
-            enrichedState,
-            {template: twitterMessageHandlerTemplate}
-        );
-
-        if (!replyText) {
-            elizaLogger.error("Failed to generate valid reply content");
-            return;
-        }
-
-        elizaLogger.debug("Final reply text to be sent:", replyText);
-
-        // let result;
-
-        // result = await sendStandardTweet(client, replyText, tweet.id);
-
-        // if (result) {
-        //     elizaLogger.log("Successfully posted reply tweet");
-
-        //     // Cache generation context for debugging
-        //     await runtime.cacheManager.set(
-        //         `twitter/reply_generation_${tweet.id}.txt`,
-        //         `Context:\n${enrichedState}\n\nGenerated Reply:\n${replyText}`
-        //     );
-
-        //     // Here i return the tweet link
-        //     const replyUrl = `https://twitter.com/${client.auth.userProfile.username}/status/${result.rest_id}`;
-        //     const content = `${replyText}`;
-        //     return { replyUrl, content, rawTweetContent, roomId };
-
-        // } else {
-        //     elizaLogger.error("Tweet reply creation failed");
-        // }
-        // estoy devolviendo vacio, porque se estaba posteando y no debia hacerlo asi que lo comente, pero me dio flojera hacer refactor,
-        // deberia hacer el refactor, pero salaverga pinche mike no paga bien, y ando atareadisimo xd, te amo hiram del futuro o futuro 
-        // developer que vea esto, disculpe por esta mierda de codigo, pero es lo que hay, si quieres refactorizarlo, adelante.
-        return { replyUrl: 'test', content: replyText, rawTweetContent, roomId };
-    } catch (error) {
-        elizaLogger.error("Error in handleTextOnlyReply:", error);
-    }
-}
 
 /**
  * La accion de responder, no manda un tweet directamente, lo unico que hace es que procesa el tweet 
@@ -255,18 +53,13 @@ export const replyAction: Action = {
             // Get the tweet content
             const tweet: Tweet = await twitterClient.getTweet(tweetId);
 
-            const {replyUrl, content, rawTweetContent, roomId} = await handleTextOnlyReply(tweet, state, runtime, twitterClient);
+            twitterPostClient.handleTextOnlyReply(tweet, state);
 
-
-            // ok esto es un desmadre, pero estoy mandando la id del tweet, esa madre es opcional
-            // pero le puse a la funcion que la recibiera
-            twitterPostClient.sendForApproval(content, roomId, rawTweetContent, tweetId);
         } catch (error) {
             elizaLogger.error("Error in reply action:", error);
             return false;
         }
     },
-    // aqui en los examples tengo que aniadir el usuario de discord y de telegram del bot
     examples: [
         [
             {

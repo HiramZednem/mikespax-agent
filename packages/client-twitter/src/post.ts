@@ -652,7 +652,7 @@ export class TwitterPostClient {
             template?: TemplateType;
             context?: string;
         }
-    ): Promise<string> {
+    ) {
         const context = composeContext({
             state: tweetState,
             template:
@@ -679,7 +679,7 @@ export class TwitterPostClient {
                 jsonResponse.text,
                 this.client.twitterConfig.MAX_TWEET_LENGTH
             );
-            return truncateContent;
+            return {truncateContent, cleanedResponse};
         }
         if (typeof jsonResponse === "object") {
             const possibleContent =
@@ -691,7 +691,7 @@ export class TwitterPostClient {
                     possibleContent,
                     this.client.twitterConfig.MAX_TWEET_LENGTH
                 );
-                return truncateContent;
+                return {truncateContent, cleanedResponse};
             }
         }
 
@@ -713,7 +713,7 @@ export class TwitterPostClient {
             );
         }
 
-        return truncateContent;
+        return {truncateContent, cleanedResponse};
     }
 
     /**
@@ -1001,7 +1001,7 @@ export class TwitterPostClient {
                             }
                         );
 
-                        const quoteContent = await this.generateTweetContent(
+                        const { truncateContent: quoteContent } = await this.generateTweetContent(
                             enrichedState,
                             {
                                 template:
@@ -1138,10 +1138,9 @@ export class TwitterPostClient {
      * Handles text-only replies to tweets. If isDryRun is true, only logs what would
      * have been replied without making API calls.
      */
-    private async handleTextOnlyReply(
+    public async handleTextOnlyReply(
         tweet: Tweet,
         tweetState: any,
-        executedActions: string[]
     ) {
         try {
             // Build conversation thread for context
@@ -1186,12 +1185,11 @@ export class TwitterPostClient {
             }
 
             // Compose rich state with all context
+            const roomId = stringToUuid(tweet.conversationId + "-" + this.runtime.agentId)
             const enrichedState = await this.runtime.composeState(
                 {
                     userId: this.runtime.agentId,
-                    roomId: stringToUuid(
-                        tweet.conversationId + "-" + this.runtime.agentId
-                    ),
+                    roomId: roomId,
                     agentId: this.runtime.agentId,
                     content: { text: tweet.text, action: "" },
                 },
@@ -1210,11 +1208,8 @@ export class TwitterPostClient {
             );
 
             // Generate and clean the reply content
-            const replyText = await this.generateTweetContent(enrichedState, {
-                template:
-                    this.runtime.character.templates
-                        ?.twitterMessageHandlerTemplate ||
-                    twitterMessageHandlerTemplate,
+            const { truncateContent: replyText, cleanedResponse} = await this.generateTweetContent(enrichedState, {
+                template: twitterMessageHandlerTemplate,
             });
 
             if (!replyText) {
@@ -1222,44 +1217,38 @@ export class TwitterPostClient {
                 return;
             }
 
-            if (this.isDryRun) {
-                elizaLogger.info(
-                    `Dry run: reply to tweet ${tweet.id} would have been: ${replyText}`
-                );
-                executedActions.push("reply (dry run)");
-                return;
-            }
-
             elizaLogger.debug("Final reply text to be sent:", replyText);
 
-            let result;
+            this.sendForApproval(replyText, roomId, cleanedResponse, tweet.id )
 
-            if (replyText.length > DEFAULT_MAX_TWEET_LENGTH) {
-                result = await this.handleNoteTweet(
-                    this.client,
-                    replyText,
-                    tweet.id
-                );
-            } else {
-                result = await this.sendStandardTweet(
-                    this.client,
-                    replyText,
-                    tweet.id
-                );
-            }
+            // let result;
 
-            if (result) {
-                elizaLogger.log("Successfully posted reply tweet");
-                executedActions.push("reply");
+            // if (replyText.length > DEFAULT_MAX_TWEET_LENGTH) {
+            //     result = await this.handleNoteTweet(
+            //         this.client,
+            //         replyText,
+            //         tweet.id
+            //     );
+            // } else {
+            //     result = await this.sendStandardTweet(
+            //         this.client,
+            //         replyText,
+            //         tweet.id
+            //     );
+            // }
 
-                // Cache generation context for debugging
-                await this.runtime.cacheManager.set(
-                    `twitter/reply_generation_${tweet.id}.txt`,
-                    `Context:\n${enrichedState}\n\nGenerated Reply:\n${replyText}`
-                );
-            } else {
-                elizaLogger.error("Tweet reply creation failed");
-            }
+            // if (result) {
+            //     elizaLogger.log("Successfully posted reply tweet");
+            //     executedActions.push("reply");
+
+            //     // Cache generation context for debugging
+            //     await this.runtime.cacheManager.set(
+            //         `twitter/reply_generation_${tweet.id}.txt`,
+            //         `Context:\n${enrichedState}\n\nGenerated Reply:\n${replyText}`
+            //     );
+            // } else {
+            //     elizaLogger.error("Tweet reply creation failed");
+            // }
         } catch (error) {
             elizaLogger.error("Error in handleTextOnlyReply:", error);
         }
