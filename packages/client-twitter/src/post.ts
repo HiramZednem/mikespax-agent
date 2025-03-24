@@ -779,10 +779,7 @@ export class TwitterPostClient {
 
                     const actionContext = composeContext({
                         state: tweetState,
-                        template:
-                            this.runtime.character.templates
-                                ?.twitterActionTemplate ||
-                            twitterActionTemplate,
+                        template: twitterActionTemplate,
                     });
 
                     const actionResponse = await generateTweetActions({
@@ -1070,17 +1067,10 @@ export class TwitterPostClient {
 
                 if (actionResponse.reply) {
                     try {
-                        // aqui tengo que mover algo para que se meta el approval, sobre todo habilitar las acciones del bot
-                        await this.sendForApproval(
-                            tweet.text,
-                            roomId,
-                            tweet.text,
+                        await this.handleTextOnlyReply(
+                            tweet,
+                            tweetState,
                         );
-                        // await this.handleTextOnlyReply(
-                        //     tweet,
-                        //     tweetState,
-                        //     executedActions
-                        // );
                     } catch (error) {
                         elizaLogger.error(
                             `Error replying to tweet ${tweet.id}:`,
@@ -1220,35 +1210,6 @@ export class TwitterPostClient {
             elizaLogger.debug("Final reply text to be sent:", replyText);
 
             this.sendForApproval(replyText, roomId, cleanedResponse, tweet.id )
-
-            // let result;
-
-            // if (replyText.length > DEFAULT_MAX_TWEET_LENGTH) {
-            //     result = await this.handleNoteTweet(
-            //         this.client,
-            //         replyText,
-            //         tweet.id
-            //     );
-            // } else {
-            //     result = await this.sendStandardTweet(
-            //         this.client,
-            //         replyText,
-            //         tweet.id
-            //     );
-            // }
-
-            // if (result) {
-            //     elizaLogger.log("Successfully posted reply tweet");
-            //     executedActions.push("reply");
-
-            //     // Cache generation context for debugging
-            //     await this.runtime.cacheManager.set(
-            //         `twitter/reply_generation_${tweet.id}.txt`,
-            //         `Context:\n${enrichedState}\n\nGenerated Reply:\n${replyText}`
-            //     );
-            // } else {
-            //     elizaLogger.error("Tweet reply creation failed");
-            // }
         } catch (error) {
             elizaLogger.error("Error in handleTextOnlyReply:", error);
         }
@@ -1267,26 +1228,60 @@ export class TwitterPostClient {
         tweetId?: string
     ): Promise<string | null> {
         try {
-            const embed = {
-                title: "New Tweet Pending Approval",
-                description: tweetTextForPosting,
-                fields: [
-                    {
-                        name: "Character",
-                        value: this.client.profile.username,
-                        inline: true,
+            
+            let embed;
+            if (tweetId) {
+
+                const tweet = await this.client.twitterClient.getTweet(tweetId);
+
+
+                embed =
+                {
+                    title: "New Reply Pending Approval",
+                    description: `📢 **Potential Reply Tweet:**\n${tweet.text}\n\n💬 **Reply:**\n${tweetTextForPosting}`,
+                    fields: [
+                        {
+                            name: "Character",
+                            value: this.client.profile.username,
+                            inline: true,
+                        },
+                        {
+                            name: "Length",
+                            value: tweetTextForPosting.length.toString(),
+                            inline: true,
+                        },
+                    ],
+                    footer: {
+                        text: "Reply with '👍' to post or '❌' to discard, This will automatically expire and remove after 24 hours if no response received",
                     },
-                    {
-                        name: "Length",
-                        value: tweetTextForPosting.length.toString(),
-                        inline: true,
+                    timestamp: new Date().toISOString(),
+                };
+
+
+            } else {
+                embed = {
+                    title: "New Tweet Pending Approval",
+                    description: tweetTextForPosting,
+                    fields: [
+                        {
+                            name: "Character",
+                            value: this.client.profile.username,
+                            inline: true,
+                        },
+                        {
+                            name: "Length",
+                            value: tweetTextForPosting.length.toString(),
+                            inline: true,
+                        },
+                    ],
+                    footer: {
+                        text: "Reply with '👍' to post or '❌' to discard, This will automatically expire and remove after 24 hours if no response received",
                     },
-                ],
-                footer: {
-                    text: "Reply with '👍' to post or '❌' to discard, This will automatically expire and remove after 24 hours if no response received",
-                },
-                timestamp: new Date().toISOString(),
-            };
+                    timestamp: new Date().toISOString(),
+                };
+            }
+
+            
 
             const channel = await this.discordClientForApproval.channels.fetch(
                 this.discordApprovalChannelId
@@ -1422,28 +1417,6 @@ export class TwitterPostClient {
 
             if (isExpired) {
                 elizaLogger.log("Pending tweet expired, cleaning up");
-
-                // Notify on Discord about expiration
-                // try {
-                //     const channel =
-                //         await this.discordClientForApproval.channels.fetch(
-                //             pendingTweet.channelId
-                //         );
-                //     if (channel instanceof TextChannel) {
-                //         const originalMessage = await channel.messages.fetch(
-                //             pendingTweet.discordMessageId
-                //         );
-                //         await originalMessage.reply(
-                //             "This tweet approval request has expired (24h timeout)."
-                //         );
-                //     }
-                // } catch (error) {
-                //     elizaLogger.error(
-                //         "Error sending expiration notification:",
-                //         error
-                //     );
-                // }
-
                 await this.cleanupPendingTweet(pendingTweet.discordMessageId);
                 return;
             }
@@ -1471,7 +1444,6 @@ export class TwitterPostClient {
                         pendingTweet.ifReply
                     );
                 }
-                // this.client.twitterClient.sendTweet(pendingTweet.tweetTextForPosting,);
 
                 // Notify on Discord about posting
                 try {
