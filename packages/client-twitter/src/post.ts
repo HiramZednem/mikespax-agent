@@ -1235,8 +1235,7 @@ export class TwitterPostClient {
                 const tweet = await this.client.twitterClient.getTweet(tweetId);
 
 
-                embed =
-                {
+                embed = {
                     title: "New Reply Pending Approval",
                     description: `📢 **Potential Reply Tweet:**\n${tweet.text}\n\n💬 **Reply:**\n${tweetTextForPosting}`,
                     fields: [
@@ -1248,6 +1247,31 @@ export class TwitterPostClient {
                         {
                             name: "Length",
                             value: tweetTextForPosting.length.toString(),
+                            inline: true,
+                        },
+                        {
+                            name: "Tweet URL",
+                            value: `https://twitter.com/${tweet.username}/status/${tweet.id}`,
+                            inline: false,
+                        },
+                        {
+                            name: "Likes",
+                            value: tweet.likes.toString(),
+                            inline: true,
+                        },
+                        {
+                            name: "Replies",
+                            value: tweet.replies.toString(),
+                            inline: true,
+                        },
+                        {
+                            name: "Posted By",
+                            value: `@${tweet.username}`,
+                            inline: true,
+                        },
+                        {
+                            name: "Time",
+                            value: new Date(tweet.timestamp).toLocaleString('en-US', { year: '2-digit', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
                             inline: true,
                         },
                     ],
