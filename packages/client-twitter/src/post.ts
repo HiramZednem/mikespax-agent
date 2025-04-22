@@ -242,9 +242,11 @@ export class TwitterPostClient {
 
     async start() {
         // Codigo realmente inicia a correr aqui...
-
+        //NOTA: ESTO NO ESTABA EN EL CODIGO ORIGINAL, LO PUSE PARA ELMINAR ANTERIORES SOLAMENTE, CONSIDERAR SI SE DEJA
         await this.runtime.cacheManager.delete(`twitter/${this.client.profile.username}/pendingTweet`);
         elizaLogger.log("💥 Cache de pendingTweet eliminada al iniciar");
+        // NOTA: TERMINA EN ESTA LINEA
+
         if (!this.client.profile) {
             await this.client.init();
         }
