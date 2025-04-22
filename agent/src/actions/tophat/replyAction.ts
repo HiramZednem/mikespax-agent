@@ -53,7 +53,7 @@ export const replyAction: Action = {
             // Get the tweet content
             const tweet: Tweet = await twitterClient.getTweet(tweetId);
 
-            twitterPostClient.handleTextOnlyReply(tweet, state);
+            twitterPostClient.handleTextOnlyReply(tweet, state, true);
 
         } catch (error) {
             elizaLogger.error("Error in reply action:", error);
