@@ -241,11 +241,6 @@ export class TwitterPostClient {
     }
 
     async start() {
-        // Codigo realmente inicia a correr aqui...
-        //NOTA: ESTO NO ESTABA EN EL CODIGO ORIGINAL, LO PUSE PARA ELMINAR ANTERIORES SOLAMENTE, CONSIDERAR SI SE DEJA
-        await this.runtime.cacheManager.delete(`twitter/${this.client.profile.username}/pendingTweet`);
-        elizaLogger.log("💥 Cache de pendingTweet eliminada al iniciar");
-        // NOTA: TERMINA EN ESTA LINEA
 
         if (!this.client.profile) {
             await this.client.init();
@@ -1239,8 +1234,7 @@ i
         rawTweetContent: string,
         tweetId?: string,
         isManual: boolean = false
-    ): Promise<string | null>
-    { 
+      ): Promise<string | null> {      
         try {
             
             let embed;
@@ -1290,7 +1284,7 @@ i
                         },
                     ],
                     footer: {
-                        text: "Reply with '👍' to post or '❌' to discard, This will automatically expire and remove after 24 hours if no response received",
+                        text: "Reply with '👍' to post, '❌' to discard or '♻️' to recycle. This will automatically expire and remove after 24 hours if no response received",
                     },
                     timestamp: new Date().toISOString(),
                 };
@@ -1313,10 +1307,10 @@ i
                         },
                     ],
                     footer: {
-                        text: "Reply with '👍' to post or '❌' to discard, This will automatically expire and remove after 24 hours if no response received",
+                        text: "Reply with '👍' to post, '❌' to discard or '♻️' to recycle. This will automatically expire and remove after 24 hours if no response received",
                     },
                     timestamp: new Date().toISOString(),
-                };
+                };//
             }
 
             
@@ -1401,7 +1395,8 @@ i
             const rejectReaction = message.reactions.cache.find(
                 (reaction) => reaction.emoji.name === "❌"
             );
-
+            
+            // Look for recycle reaction ('♻️')
             const recycleReaction = message.reactions.cache.find(
                 (reaction) => reaction.emoji.name === "♻️"
             );
@@ -1409,21 +1404,15 @@ i
             if (recycleReaction && recycleReaction.count > 1) {
                 return "RECYCLE";
             }
-            
 
             // Check if the reaction exists and has reactions
             if (rejectReaction && rejectReaction.count > 1) {
                 return "REJECTED"; 
             }
             
-            // Check if the reaction exists and has reactions
-            
-            // You might want to check for specific users who can approve
-            // For now, we'll return true if anyone used thumbs up
             if (thumbsUpReaction && thumbsUpReaction.count > 1) {
                 return "APPROVED";
             }
-                
 
             return "PENDING";
         } catch (error) {
@@ -1457,7 +1446,6 @@ i
     private async handlePendingTweet() {
         elizaLogger.log("Checking Pending Tweets...");
         const pendingTweetsKey = `twitter/${this.client.profile.username}/pendingTweet`;
-        // esto extrae todo los tweets que estan en cache
         const pendingTweets =
             (await this.runtime.cacheManager.get<PendingTweet[]>(
                 pendingTweetsKey
@@ -1480,23 +1468,14 @@ i
             const approvalStatus: PendingTweetApprovalStatus =
                 await this.checkApprovalStatus(pendingTweet.discordMessageId);
 
-            // si entro en el approve o en reject, 
-            // vamos a mandar 2 main feed tweets y 2 replies
-            // mainFeedTweets...
-            // this.generateNewTweet();
-            // this.generateNewTweet();
-
-            // 2 replies...
-
-            // vas a meter un approval status con el icono de :recycle: 
             if (approvalStatus === "APPROVED" || approvalStatus === "REJECTED" || approvalStatus === "RECYCLE") {
-                const isReply = !!pendingTweet.ifReply;
+                
             
                 await this.cleanupPendingTweet(pendingTweet.discordMessageId);
             
                 if (approvalStatus === "APPROVED") {
                     elizaLogger.log("Tweet Approved, Posting");
-                    if (!isReply) {
+                    if (!pendingTweet.ifReply) {
                         await this.postTweet(
                             this.runtime,
                             this.client,
@@ -1513,7 +1492,6 @@ i
                         );
                     }
             
-                    // Notificación en Discord sobre publicación exitosa
                     try {
                         const channel =
                             await this.discordClientForApproval.channels.fetch(
@@ -1559,29 +1537,44 @@ i
                 }
 
                 if (approvalStatus === "RECYCLE") {
-                    elizaLogger.log("♻️ Marcado para reciclaje.");
+                    elizaLogger.log("♻️ Recycling Tweet");
                 
                     await this.cleanupPendingTweet(pendingTweet.discordMessageId);
                 
                     if (pendingTweet.ifReply) {
-                        elizaLogger.log("♻️ Reciclando REPLY: Generando nueva respuesta para el mismo tweet.");
+                        
+                        try {
+                            const channel = await this.discordClientForApproval.channels.fetch(pendingTweet.channelId);
+                            if (channel instanceof TextChannel) {
+                                const originalMessage = await channel.messages.fetch(pendingTweet.discordMessageId);
+                                await originalMessage.reply(`♻️ Recycling Reply: Generating new reply.`);
+                            }
+                        } catch (error) {
+                            elizaLogger.error("Error sending post notification:", error);
+                        }
                 
                         const originalTweet = await this.client.twitterClient.getTweet(pendingTweet.ifReply);
-                
                         await this.handleTextOnlyReply(originalTweet, {}, false);
-                    } else {
-                        elizaLogger.log("♻️ Reciclando FEED POST: Generando nuevo tweet.");
-                
-                        await this.generateNewTweet();
+                        return;
+                    }
+                    try {
+                        const channel = await this.discordClientForApproval.channels.fetch(pendingTweet.channelId);
+                        if (channel instanceof TextChannel) {
+                            const originalMessage = await channel.messages.fetch(pendingTweet.discordMessageId);
+                            await originalMessage.reply(`♻️ Recycling Tweet: Generating new tweet.`);
+                        }
+                    } catch (error) {
+                        elizaLogger.error("Error sending post notification:", error);
                     }
                 
+                    await this.generateNewTweet();
                     return;
                 }
                 
                 
                 if (!pendingTweet.isManual) {
-                    elizaLogger.log("Generando nuevos tweets");
-
+                    elizaLogger.log("Generating news tweets...");
+                     // TODO: optimizar esta parte.
                     await this.generateNewTweet();
                     await this.generateNewTweet();
                 
@@ -1594,25 +1587,16 @@ i
                         const newReplies = results?.filter(r => r.actionResponse.reply).length ?? 0;
                         repliesGenerated += newReplies;
                     
-                        elizaLogger.log(`🔁 Intento ${attempts + 1}: se generaron ${newReplies} nuevas replies (acumuladas: ${repliesGenerated}/2)`);
+                        elizaLogger.log(`🔁 Attempt ${attempts + 1}: generated ${newReplies} new replies (total so far: ${repliesGenerated}/2)`);
                         attempts++;
+
                     }
                 
-                    if (repliesGenerated < 2) {
-                        elizaLogger.warn(`⚠️ Solo se generaron ${repliesGenerated}/2 replies tras ${attempts} intentos.`);
-                    } else {
-                        elizaLogger.log("✅ Se generaron 2 replies correctamente.");
-                    }
                 } else {
-                    elizaLogger.log("🔕 Tweet manual aprobado/rechazado — no se genera reemplazo automático.");
+                    elizaLogger.log("🔕 Manually approved/rejected tweet — no automatic replacement generated.");
                 }
                 return;
                 
-            // recycle..
-            /* 
-                oye si es una reply..... entonces tiene que ser al mismo tweet pero diferente texo...
-                si en un main feed tweet... -> mandas el que haga un nuevo tweet...
-            */
             }
         }
     }
