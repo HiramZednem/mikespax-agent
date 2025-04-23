@@ -1241,7 +1241,9 @@ i
             if (tweetId) {
 
                 const tweet = await this.client.twitterClient.getTweet(tweetId);
-
+                const rawDate = tweet.timeParsed || tweet.timestamp;
+                const parsedTime = new Date(rawDate).getTime();
+                const ageInMinutes = Math.floor((Date.now() - parsedTime) / (1000 * 60));
 
                 embed = {
                     title: "New Reply Pending Approval",
@@ -1279,7 +1281,12 @@ i
                         },
                         {
                             name: "Time",
-                            value: new Date(tweet.timestamp).toLocaleString('en-US', { year: '2-digit', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
+                            value: new Date(parsedTime).toLocaleString('en-US', { year: '2-digit', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
+                            inline: true,
+                        },
+                        {
+                            name: "Age",
+                            value: `${ageInMinutes} min ago`,
                             inline: true,
                         },
                     ],
