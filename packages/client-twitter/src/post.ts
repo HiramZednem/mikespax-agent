@@ -1477,9 +1477,6 @@ i
 
             if (approvalStatus === "APPROVED" || approvalStatus === "REJECTED" || approvalStatus === "RECYCLE") {
                 
-            
-                await this.cleanupPendingTweet(pendingTweet.discordMessageId);
-            
                 if (approvalStatus === "APPROVED") {
                     elizaLogger.log("Tweet Approved, Posting");
                     if (!pendingTweet.ifReply) {
@@ -1518,8 +1515,12 @@ i
                             error
                         );
                     }
+                    await this.cleanupPendingTweet(pendingTweet.discordMessageId);
+                    await this.generateReplacementContentIfNeeded(pendingTweet);
+                    return;
+                
                 }
-                await this.cleanupPendingTweet(pendingTweet.discordMessageId);
+
                 if (approvalStatus === "REJECTED") {
                     elizaLogger.log("Tweet Rejected, Cleaning Up");
                     try {
@@ -1541,12 +1542,14 @@ i
                             error
                         );
                     }
+
+                    await this.cleanupPendingTweet(pendingTweet.discordMessageId);
+                    await this.generateReplacementContentIfNeeded(pendingTweet);
+                    return;
                 }
 
                 if (approvalStatus === "RECYCLE") {
                     elizaLogger.log("♻️ Recycling Tweet");
-                
-                    await this.cleanupPendingTweet(pendingTweet.discordMessageId);
                 
                     if (pendingTweet.ifReply) {
                         
@@ -1575,36 +1578,35 @@ i
                     }
                 
                     await this.generateNewTweet();
+                    await this.cleanupPendingTweet(pendingTweet.discordMessageId);
                     return;
                 }
-                
-                
-                if (!pendingTweet.isManual) {
-                    elizaLogger.log("Generating news tweets...");
-                     // TODO: optimizar esta parte.
-                    await this.generateNewTweet();
-                    await this.generateNewTweet();
-                
-                    let repliesGenerated = 0;
-                    let attempts = 0;
-                    const maxAttempts = 5;
-                    
-                    while (repliesGenerated < 2 && attempts < maxAttempts) {
-                        const results = await this.processTweetActions();
-                        const newReplies = results?.filter(r => r.actionResponse.reply).length ?? 0;
-                        repliesGenerated += newReplies;
-                    
-                        elizaLogger.log(`🔁 Attempt ${attempts + 1}: generated ${newReplies} new replies (total so far: ${repliesGenerated}/2)`);
-                        attempts++;
-
-                    }
-                
-                } else {
-                    elizaLogger.log("🔕 Manually approved/rejected tweet — no automatic replacement generated.");
-                }
-                return;
-                
             }
         }
     }
+
+    private async generateReplacementContentIfNeeded(pendingTweet: PendingTweet) {
+        if (pendingTweet.isManual) {
+            elizaLogger.log("🛑 Manual tweet – no automatic replacement.");
+            return;
+        }
+    
+        elizaLogger.log("🧪 Generating new content after approval/rejection...");
+        await this.generateNewTweet();
+        await this.generateNewTweet();
+    
+        let repliesGenerated = 0;
+        let attempts = 0;
+        const maxAttempts = 5;
+    
+        while (repliesGenerated < 2 && attempts < maxAttempts) {
+            const results = await this.processTweetActions();
+            const newReplies = results?.filter(r => r.actionResponse.reply).length ?? 0;
+            repliesGenerated += newReplies;
+    
+            elizaLogger.log(`🔁 Attempt ${attempts + 1}: generated ${newReplies} new replies (total: ${repliesGenerated}/2)`);
+            attempts++;
+        }
+    }
+    
 }
