@@ -246,6 +246,9 @@ export class TwitterPostClient {
             await this.client.init();
         }
 
+        await this.runtime.cacheManager.delete(`twitter/${this.client.profile.username}/pendingTweet`);
+        elizaLogger.log("🧹 Cache de pendingTweet eliminada");
+
         // un loop de manera independiente que genera main feed tweets...
         const generateNewTweetLoop = async () => {
             const lastPost = await this.runtime.cacheManager.get<{
@@ -1523,6 +1526,7 @@ i
 
                 if (approvalStatus === "REJECTED") {
                     elizaLogger.log("Tweet Rejected, Cleaning Up");
+                    await this.cleanupPendingTweet(pendingTweet.discordMessageId);
                     try {
                         const channel =
                             await this.discordClientForApproval.channels.fetch(
@@ -1543,7 +1547,6 @@ i
                         );
                     }
 
-                    await this.cleanupPendingTweet(pendingTweet.discordMessageId);
                     await this.generateReplacementContentIfNeeded(pendingTweet);
                     return;
                 }
@@ -1565,6 +1568,7 @@ i
                 
                         const originalTweet = await this.client.twitterClient.getTweet(pendingTweet.ifReply);
                         await this.handleTextOnlyReply(originalTweet, {}, false);
+                        await this.cleanupPendingTweet(pendingTweet.discordMessageId);
                         return;
                     }
                     try {
